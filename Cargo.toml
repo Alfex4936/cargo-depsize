@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Seok Won Choi <ikr@kakao.com>"]
 license = "MIT"
 description = "a Rust cargo utility that calculates and displays the total size of each dependency in your Rust project."
+repository = "https://github.com/Alfex4936/cargo-depsize"
 
 [dependencies]
 anyhow = "1.0"
