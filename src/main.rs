@@ -6,10 +6,12 @@ use cargo::core::PackageId;
 use cargo::core::Workspace;
 use cargo::util::important_paths::find_root_manifest_for_wd;
 use cargo::Config;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::process;
 use tokio::fs;
+
+use tokio::task::JoinSet;
 
 #[tokio::main]
 async fn main() {
@@ -34,14 +36,6 @@ async fn run() -> Result<()> {
 
     Ok(())
 }
-
-// choosing a specific version of the package when there are multiple versions available.
-// fn select_latest_version(package_ids: &[PackageId]) -> &PackageId {
-//     package_ids
-//         .iter()
-//         .max_by_key(|package_id| package_id.version())
-//         .unwrap()
-// }
 
 /// Formats a size value in bytes as a human-readable string with units of KB, MB, or GB.
 ///
@@ -107,7 +101,7 @@ fn format_size(size: u64) -> String {
 async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> {
     // Obtain dependency graph
     // let requested_targets: Vec<CompileKind> = vec![];
-    let target_data = RustcTargetData::new(workspace, &[])?;
+    let mut target_data = RustcTargetData::new(workspace, &[])?;
     let cli_features = CliFeatures::new_all(true);
     //let specs: Vec<cargo::core::PackageIdSpec> = vec![];
     let has_dev_units = HasDevUnits::Yes;
@@ -115,21 +109,49 @@ async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> 
 
     let workspace_resolve = cargo::ops::resolve_ws_with_opts(
         workspace,
-        &target_data,
+        &mut target_data,
         &[], // requested_targets
         &cli_features,
         &[], // specs
         has_dev_units,
         force_all_targets,
+        None,
     )?;
 
     let packages = workspace_resolve.pkg_set.packages();
+    let mut join_set = JoinSet::new();
+    // let semaphore = Arc::new(Semaphore::new(1));
+
+    // Spawn each calculate_package_size task into the JoinSet
+    for package in packages {
+        // let semaphore_clone = semaphore.clone();
+        // Extract and clone necessary data here
+        let package_id = package.package_id().clone();
+        let package_path = package.root().to_path_buf(); // PathBuf is Send
+
+        join_set.spawn(async move {
+            // let _permit = semaphore_clone
+            //     .acquire()
+            //     .await
+            //     .expect("Failed to acquire semaphore");
+            // Now calculate_package_size takes a PathBuf, which is Send
+            match calculate_package_size(&package_path).await {
+                Ok(size) => Ok((package_id, size)),
+                Err(e) => {
+                    eprintln!("Failed to calculate size for {}: {}", package_id.name(), e);
+                    Err(e)
+                }
+            }
+        });
+    }
+
     // let resolve = workspace_resolve.workspace_resolve;
     let mut package_sizes = HashMap::<PackageId, u64>::new();
 
-    for package in packages.into_iter() {
-        let size = calculate_package_size(package).await?;
-        package_sizes.insert(package.package_id().clone(), size);
+    // Await all spawned tasks and collect their results
+    while let Some(res) = join_set.join_next().await {
+        let (package_id, size) = res?.expect("Failed to join");
+        package_sizes.insert(package_id, size);
     }
 
     let root_package = workspace.current()?;
@@ -138,33 +160,46 @@ async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> 
         .iter()
         .filter(|dep| dep.kind() == DepKind::Normal);
 
-    let package_set = &workspace_resolve.pkg_set;
+    // Identify the latest versions of each package among root dependencies
+    // Collecting unique names of root dependencies
+    let dep_names: HashSet<String> = root_deps
+        .map(|dep| dep.package_name().to_string())
+        .collect();
 
-    let mut sum = 0;
-    for dep in root_deps {
-        let package_name = dep.package_name();
-        let mut latest_package_id: Option<PackageId> = None;
+    // Resolving each dependency name to its latest version
+    let latest_versions: HashSet<PackageId> = dep_names
+        .into_iter()
+        .filter_map(|name| {
+            workspace_resolve
+                .pkg_set
+                .packages()
+                .filter(|pkg| pkg.name() == name.as_str())
+                .max_by_key(|pkg| pkg.version())
+                .map(|pkg| pkg.package_id().clone())
+        })
+        .collect();
 
-        for package_id in package_set
-            .package_ids()
-            .filter(|id| id.name() == package_name)
-        {
-            latest_package_id = match latest_package_id {
-                Some(current_latest) => Some(if package_id.version() > current_latest.version() {
-                    package_id
-                } else {
-                    current_latest
-                }),
-                None => Some(package_id),
-            };
+    let mut sum: u64 = 0;
+    let mut package_infos = Vec::new();
+
+    // Loop over the latest_versions HashSet
+    for package_id in latest_versions.iter() {
+        // Check if the package_id is in the package_sizes HashMap
+        if let Some(&size) = package_sizes.get(package_id) {
+            // Get the package from the package set to print its name and version
+            if let Ok(package) = workspace_resolve.pkg_set.get_one(*package_id) {
+                let name_ver = format!("{} (v{})", package.name(), package.version());
+                package_infos.push((name_ver, size));
+                sum += size;
+            }
         }
+    }
 
-        let package_id = latest_package_id.unwrap();
-        let package = package_set.get_one(package_id)?;
-        let size = calculate_package_size(package).await?;
-        sum += size;
+    // Sort the vector by size (second element of the tuple)
+    package_infos.sort_by_key(|k| k.1);
 
-        let name_ver = format!("{} (v{})", dep.name_in_toml(), package_id.version());
+    // Now iterate over the sorted vector (asc order)
+    for (name_ver, size) in package_infos {
         println!("{: <25} : {}", name_ver, format_size(size));
     }
 
@@ -173,8 +208,8 @@ async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> 
     Ok(())
 }
 
-async fn calculate_package_size(package: &cargo::core::Package) -> Result<u64> {
-    let package_path = package.root();
+async fn calculate_package_size(package_path: &std::path::Path) -> Result<u64> {
+    // let package_path = package.root();
     let walker = ignore::WalkBuilder::new(package_path).build();
     let mut total_size = 0;
 
@@ -191,4 +226,17 @@ async fn calculate_package_size(package: &cargo::core::Package) -> Result<u64> {
     }
 
     Ok(total_size)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(format_size(1024), "1.00KB (1024 bytes)");
+        assert_eq!(format_size(1048576), "1.00MB (1048576 bytes)");
+        assert_eq!(format_size(1073741824), "1.00GB (1073741824 bytes)");
+        assert_eq!(format_size(100), "100 bytes");
+    }
 }
