@@ -5,7 +5,7 @@ use cargo::core::resolver::features::{CliFeatures, ForceAllTargets, HasDevUnits}
 use cargo::core::PackageId;
 use cargo::core::Workspace;
 use cargo::util::important_paths::find_root_manifest_for_wd;
-use cargo::Config;
+use cargo::GlobalContext;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::process;
@@ -23,7 +23,7 @@ async fn main() {
 }
 
 async fn run() -> Result<()> {
-    let config = Config::default()?;
+    let config = GlobalContext::default()?;
 
     // Locate the Cargo.toml
     let manifest_path = find_root_manifest_for_wd(&env::current_dir()?)?;
@@ -115,7 +115,7 @@ async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> 
         &[], // specs
         has_dev_units,
         force_all_targets,
-        None,
+        false,
     )?;
 
     let packages = workspace_resolve.pkg_set.packages();
