@@ -1,12 +1,12 @@
 [package]
 name = "cargo-depsize"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 authors = ["Seok Won Choi <ikr@kakao.com>"]
 license = "MIT"
 description = "Rust cargo utility that calculates and displays the total size of each dependency in your Rust project."
 repository = "https://github.com/Alfex4936/cargo-depsize"
-categories = ["dependencies", "cargo", "cargo-util"]
+categories = ["development-tools::cargo-plugins", "development-tools::debugging"]
 
 [dependencies]
 anyhow = "1.0"
