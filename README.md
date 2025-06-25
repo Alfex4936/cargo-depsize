@@ -1,5 +1,8 @@
 # `cargo-depsize`
-===============
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/a4ef06ba-f3fb-484a-b907-db234e873f60" alt="logo" width="200"/>
+</p>
 
 `cargo-depsize` is a Rust cargo utility that calculates and displays the total size of each dependency in your Rust project.
 
