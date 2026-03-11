@@ -134,7 +134,7 @@ async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> 
             //     .await
             //     .expect("Failed to acquire semaphore");
             // Now calculate_package_size takes a PathBuf, which is Send
-            match calculate_package_size(&package_path).await {
+            match calculate_package_size(&package_path) {
                 Ok(size) => Ok((package_id, size)),
                 Err(e) => {
                     eprintln!("Failed to calculate size for {}: {}", package_id.name(), e);
@@ -207,7 +207,7 @@ async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> 
     Ok(())
 }
 
-async fn calculate_package_size(package_path: &std::path::Path) -> Result<u64> {
+fn calculate_package_size(package_path: &std::path::Path) -> Result<u64> {
     // let package_path = package.root();
     let walker = ignore::WalkBuilder::new(package_path).build();
     let mut total_size = 0;
