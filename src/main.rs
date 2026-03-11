@@ -9,7 +9,6 @@ use cargo::GlobalContext;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::process;
-use tokio::fs;
 
 use tokio::task::JoinSet;
 
@@ -217,7 +216,7 @@ async fn calculate_package_size(package_path: &std::path::Path) -> Result<u64> {
         match entry {
             Ok(entry) => {
                 if entry.file_type().unwrap().is_file() {
-                    let metadata = fs::metadata(entry.path()).await?;
+                    let metadata = entry.metadata().unwrap();
                     total_size += metadata.len();
                 }
             }
