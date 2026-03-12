@@ -9,19 +9,17 @@ use cargo::GlobalContext;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::process;
+use std::thread::ScopedJoinHandle;
 
-use tokio::task::JoinSet;
-
-#[tokio::main]
-async fn main() {
-    let result = run().await;
+fn main() {
+    let result = run();
     if let Err(err) = result {
         eprintln!("Error: {:?}", err);
         process::exit(1);
     }
 }
 
-async fn run() -> Result<()> {
+fn run() -> Result<()> {
     let config = GlobalContext::default()?;
 
     // Locate the Cargo.toml
@@ -31,7 +29,7 @@ async fn run() -> Result<()> {
     let workspace = Workspace::new(&manifest_path, &config)?;
 
     // Calculate and display the total size of each dependency
-    calculate_and_display_depsize(&workspace).await?;
+    calculate_and_display_depsize(&workspace)?;
 
     Ok(())
 }
@@ -97,7 +95,7 @@ fn format_size(size: u64) -> String {
 ///     }
 /// }
 /// ```
-async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> {
+fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> {
     // Obtain dependency graph
     // let requested_targets: Vec<CompileKind> = vec![];
     let mut target_data = RustcTargetData::new(workspace, &[])?;
@@ -118,40 +116,45 @@ async fn calculate_and_display_depsize(workspace: &Workspace<'_>) -> Result<()> 
     )?;
 
     let packages = workspace_resolve.pkg_set.packages();
-    let mut join_set = JoinSet::new();
+
     // let semaphore = Arc::new(Semaphore::new(1));
+    //
+    let package_sizes = std::thread::scope(|s| {
+        let mut handles: Vec<ScopedJoinHandle<Result<(PackageId, u64)>>> = Vec::new();
+        // Spawn each calculate_package_size task into the JoinSet
+        for package in packages {
+            // let semaphore_clone = semaphore.clone();
+            // Extract and clone necessary data here
+            let package_id = package.package_id().clone();
+            let package_path = package.root().to_path_buf(); // PathBuf is Send
 
-    // Spawn each calculate_package_size task into the JoinSet
-    for package in packages {
-        // let semaphore_clone = semaphore.clone();
-        // Extract and clone necessary data here
-        let package_id = package.package_id().clone();
-        let package_path = package.root().to_path_buf(); // PathBuf is Send
-
-        join_set.spawn(async move {
-            // let _permit = semaphore_clone
-            //     .acquire()
-            //     .await
-            //     .expect("Failed to acquire semaphore");
-            // Now calculate_package_size takes a PathBuf, which is Send
-            match calculate_package_size(&package_path) {
-                Ok(size) => Ok((package_id, size)),
-                Err(e) => {
-                    eprintln!("Failed to calculate size for {}: {}", package_id.name(), e);
-                    Err(e)
+            handles.push(s.spawn(move || {
+                // let _permit = semaphore_clone
+                //     .acquire()
+                //     .await
+                //     .expect("Failed to acquire semaphore");
+                // Now calculate_package_size takes a PathBuf, which is Send
+                match calculate_package_size(&package_path) {
+                    Ok(size) => Ok((package_id, size)),
+                    Err(e) => {
+                        eprintln!("Failed to calculate size for {}: {}", package_id.name(), e);
+                        Err(e)
+                    }
                 }
-            }
-        });
-    }
+            }));
+        }
 
-    // let resolve = workspace_resolve.workspace_resolve;
-    let mut package_sizes = HashMap::<PackageId, u64>::new();
+        // let resolve = workspace_resolve.workspace_resolve;
+        let mut package_sizes = HashMap::<PackageId, u64>::new();
 
-    // Await all spawned tasks and collect their results
-    while let Some(res) = join_set.join_next().await {
-        let (package_id, size) = res?.expect("Failed to join");
-        package_sizes.insert(package_id, size);
-    }
+        // Await all spawned tasks and collect their results
+        for h in handles {
+            let (package_id, size) = h.join().unwrap().expect("Failed to join");
+            package_sizes.insert(package_id, size);
+        }
+
+        package_sizes
+    });
 
     let root_package = workspace.current()?;
     let root_deps = root_package
