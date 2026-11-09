@@ -1,91 +1,56 @@
-# `cargo-depsize`
+# cargo-depsize
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/a4ef06ba-f3fb-484a-b907-db234e873f60" alt="logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/Alfex4936/cargo-depsize/main/logo.png" alt="cargo-depsize logo" width="180">
 </p>
 
-`cargo-depsize` is a Rust cargo utility that calculates and displays the total size of each dependency in your Rust project.
+Report the source size of your project’s direct Cargo dependencies.
 
-# Installation
-------------
+## Install
 
-Install `cargo-depsize` using the following command:
+Requires Rust and Cargo 1.88 or newer.
 
 ```sh
-cargo install cargo-depsize
+cargo install cargo-depsize --locked
 ```
 
-# Usage
------
+To build and install the current checkout, run `cargo install --path . --locked`.
 
-After installation, simply run the following command in your Rust project directory:
+## Usage
+
+Run from a Cargo package or workspace:
 
 ```sh
 cargo depsize
 ```
 
-This command will display the size of each dependency package in your Rust project, as well as the total size of all dependencies.
-
-# Example Output
---------------
-
-### Cargo.toml
-
-```toml
-[dependencies]
-actix-rt = "2"
-actix-http = "3"
-actix-web = "4"
-actix-cors = "0.6"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_derive = "1.0"
-reqwest = { version = "0.11", features = ["json", "blocking"] }
-scraper = "0.15"
-chrono = "0.4"
-kakao-rs = "0.3"
-rand = "0.8"
-lazy_static = "1.4.0"
-mongodb = "2"
-futures = "0.3"
+```text
+example-crate (v1.2.3)    : 120.00KB (122880 bytes)
+other-crate (v0.4.0)      : 256.00KB (262144 bytes)
+> Total size: 376.00KB (385024 bytes)
 ```
 
-### cargo depsize
+| Option | Behavior |
+| --- | --- |
+| `--manifest-path <PATH>` | Inspect the given `Cargo.toml`. |
+| `--locked` | Require the existing lockfile to be up to date. |
+| `--offline` | Resolve using only dependencies already available locally. |
+| `--help` | Show all options. |
 
-```python
-actix-cors (v0.6.4)       : 120.79KB (123690 bytes)
-actix-http (v3.3.1)       : 768.80KB (787252 bytes)
-actix-rt (v2.8.0)         : 71.69KB (73408 bytes)
-actix-web (v4.3.1)        : 1.00MB (1049274 bytes)
-chrono (v0.4.24)          : 985.68KB (1009338 bytes)
-futures (v0.3.27)         : 303.00KB (310269 bytes)
-kakao-rs (v0.3.4)         : 78.91KB (80803 bytes)
-lazy_static (v1.4.0)      : 29.38KB (30081 bytes)
-mongodb (v2.4.0)          : 4.27MB (4473014 bytes)
-rand (v0.8.5)             : 342.29KB (350509 bytes)
-reqwest (v0.11.15)        : 690.98KB (707563 bytes)
-scraper (v0.15.0)         : 85.43KB (87484 bytes)
-serde (v1.0.158)          : 497.03KB (508959 bytes)
-serde_derive (v1.0.158)   : 305.38KB (312706 bytes)
-serde_json (v1.0.94)      : 669.40KB (685469 bytes)
-> Total size: 10.10MB (10589819 bytes)
+## What the report counts
+
+- Each resolved **direct normal dependency**, including optional dependencies with all features enabled and normal dependencies declared for other targets. Build-only, dev-only, and transitive-only dependencies are excluded.
+- A package directory's regular files, with `.ignore`, `.gitignore`, and standard hidden-file rules applied. The scanner skips symlinks, package-local `target/` directories, and the workspace’s configured Cargo output directories. The byte counts describe the local source tree.
+- At a virtual workspace root, the report combines direct dependencies of the default members. A package shared by multiple members is counted once. From a member directory, the report uses that member's dependencies.
+
+Cargo may download dependencies during resolution. Use `--locked --offline` when you need to inspect an already cached project without modifying its lockfile.
+
+## Development
+
+```sh
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
 ```
 
-# Dependencies
-------------
-
-`cargo-depsize` is built on top of the following dependencies:
-
-*   [anyhow](https://crates.io/crates/anyhow) - for easy error handling
-*   [cargo](https://crates.io/crates/cargo) - for working with Rust workspaces and packages
-*   [ignore](https://crates.io/crates/ignore) - for walking package files with ignore rules
-
-# Contributing
-------------
-
-Contributions are welcome! If you have any suggestions or improvements, feel free to create a pull request or open an issue on the repository.
-
-# License
--------
-
-`cargo-depsize` is released under the MIT License.
+Licensed under [MIT](LICENSE).
