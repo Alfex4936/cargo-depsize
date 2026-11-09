@@ -78,7 +78,7 @@ serde_json (v1.0.94)      : 669.40KB (685469 bytes)
 
 *   [anyhow](https://crates.io/crates/anyhow) - for easy error handling
 *   [cargo](https://crates.io/crates/cargo) - for working with Rust workspaces and packages
-*   [tokio](https://crates.io/crates/tokio) - for asynchronous file metadata retrieval
+*   [ignore](https://crates.io/crates/ignore) - for walking package files with ignore rules
 
 # Contributing
 ------------
